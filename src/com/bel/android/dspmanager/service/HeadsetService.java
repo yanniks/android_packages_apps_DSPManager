@@ -7,8 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import android.app.Service;
-import android.bluetooth.BluetoothClass;
-import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothA2dp;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -186,7 +185,6 @@ public class HeadsetService extends Service {
 			final String action = intent.getAction();
 			final boolean prevUseHeadset = mUseHeadset;
 			final boolean prevUseBluetooth = mUseBluetooth;
-			final AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 			if (action.equals(Intent.ACTION_HEADSET_PLUG)) {
 				mUseHeadset = intent.getIntExtra("state", 0) == 1;
 				boolean launchPlayer = Settings.System.getInt(getContentResolver(),
@@ -197,28 +195,10 @@ public class HeadsetService extends Service {
 					playerIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 					startActivity(playerIntent);
 				}
-			} else if (action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)) {
-				final int deviceClass = ((BluetoothDevice) intent
-						.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)).getBluetoothClass()
-						.getDeviceClass();
-				if ((deviceClass == BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES)
-						|| (deviceClass == BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET)) {
-					mUseBluetooth = true;
-				}
-			} else if (action.equals(AudioManager.ACTION_AUDIO_BECOMING_NOISY)) {
-				mUseBluetooth = audioManager.isBluetoothA2dpOn();
-				mUseHeadset = audioManager.isWiredHeadsetOn();
-			} else if (action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED)) {
-				final BluetoothDevice device =
-						((BluetoothDevice) intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE));
-				if (device == null || device.getBluetoothClass() == null) {
-					return;
-				}
-				final int deviceClass = device.getBluetoothClass().getDeviceClass();
-				if ((deviceClass == BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES)
-						|| (deviceClass == BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET)) {
-					mUseBluetooth = false;
-				}
+			} else if (action.equals(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)) {
+				int state = intent.getIntExtra(BluetoothA2dp.EXTRA_STATE,
+					BluetoothA2dp.STATE_DISCONNECTED);
+				mUseBluetooth = state == BluetoothA2dp.STATE_CONNECTED;
 			}
 
             Log.i(TAG, "Headset=" + mUseHeadset + "; Bluetooth=" + mUseBluetooth);
@@ -240,8 +220,7 @@ public class HeadsetService extends Service {
 		registerReceiver(mAudioSessionReceiver, audioFilter);
 
 		final IntentFilter intentFilter = new IntentFilter(Intent.ACTION_HEADSET_PLUG);
-		intentFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
-		intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+		intentFilter.addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
 		intentFilter.addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
 		registerReceiver(mRoutingReceiver, intentFilter);
 
@@ -301,11 +280,11 @@ public class HeadsetService extends Service {
 	 * @return string token that identifies configuration to use
 	 */
 	public String getAudioOutputRouting() {
-		if (mUseBluetooth) {
-			return "bluetooth";
-		}
 		if (mUseHeadset) {
 			return "headset";
+		}
+		if (mUseBluetooth) {
+			return "bluetooth";
 		}
 		return "speaker";
 	}
